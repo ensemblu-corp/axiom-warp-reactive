@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <name>Axiom Reactive Warp Driver</name>
+    <description>The sovereign, non-blocking asynchronous streaming and backpressure-flow database driver for Axiom.</description>
+    <url>https://github.com/ensemblu-corp/axiom-warp-reactive</url>
+
+    <groupId>com.ensemblu</groupId>
+    <artifactId>axiom-warp-reactive</artifactId>
+    <version>1.0.0</version>
+
+    <organization>
+        <name>Ensemblu Corp</name>
+        <url>https://ensemblu.com</url>
+    </organization>
+
+    <developers>
+        <developer>
+            <name>Ofek Malka</name>
+            <email>contact@ensemblu.com</email>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/ensemblu-corp/axiom-warp-reactive.git</connection>
+        <developerConnection>scm:git:ssh://github.com/ensemblu-corp/axiom-warp-reactive.git</developerConnection>
+        <url>https://github.com/ensemblu-corp/axiom-warp-reactive</url>
+    </scm>
+
+    <licenses>
+        <license>
+            <name>Limited Commercial License</name>
+            <url>https://raw.githubusercontent.com/ensemblu-corp/axiom-warp-reactive/main/LICENSE</url>
+            <distribution>repo</distribution>
+            <comments>
+                Free for evaluation, testing, and non-commercial development.
+                Commercial or production use requires a paid annual contract.
+            </comments>
+        </license>
+    </licenses>
+
+
+    <properties>
+        <java.version>26</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Source: https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-compiler-plugin -->
+        <maven-compiler.version>3.15.0</maven-compiler.version>
+        <!-- Source: https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-jar-plugin -->
+        <maven-jar.version>3.5.0</maven-jar.version>
+        <!-- Source: https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-source-plugin -->
+        <maven-source.version>3.4.0</maven-source.version>
+        <!-- Source: https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-install-plugin -->
+        <maven-install.version>3.1.4</maven-install.version>
+        <!-- Source: https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-clean-plugin -->
+        <maven-clean.version>3.5.0</maven-clean.version>
+        <!-- Source: https://mvnrepository.com/artifact/io.vertx/vertx-core -->
+        <vertx-core.version>5.1.5</vertx-core.version>
+        <!-- Source: https://mvnrepository.com/artifact/io.vertx/vertx-sql-client -->
+        <vertx-sql-client.version>5.1.5</vertx-sql-client.version>
+        <!-- Source: https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-enforcer-plugin -->
+        <maven-enforcer.version>3.6.3</maven-enforcer.version>
+    </properties>
+
+    <dependencies>
+            <dependency>
+                <groupId>com.ensemblu</groupId>
+                <artifactId>axiom-spec</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-core</artifactId>
+            <version>${vertx-core.version}</version>
+            <exclusions>
+                <!-- HTTP/2, HTTP/3, QUIC — not needed for SQL -->
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-codec-http2</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-codec-classes-quic</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-codec-http3</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-tcnative-classes</artifactId>
+                </exclusion>
+                <!-- Jackson — not needed -->
+                <exclusion>
+                    <groupId>tools.jackson.core</groupId>
+                    <artifactId>jackson-core</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>tools.jackson.core</groupId>
+                    <artifactId>jackson-databind</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-annotations</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+            <dependency>
+                <groupId>io.vertx</groupId>
+                <artifactId>vertx-sql-client</artifactId>
+                <version>${vertx-sql-client.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>io.vertx</groupId>
+                        <artifactId>vertx-core</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+    </dependencies>
+    <build>
+        <resources>
+            <resource>
+                <directory>${project.basedir}</directory>
+                <includes>
+                    <include>LICENSE.md</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler.version}</version>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <compilerArgs>
+                        <arg>--enable-preview</arg>
+                        <arg>-parameters</arg>
+                        <arg>-Xlint:all</arg>
+                        <arg>-Xlint:deprecation</arg>
+                        <arg>-Xlint:-unchecked</arg>
+                        <arg>-Xlint:-rawtypes</arg>
+                        <arg>-Xlint:-preview</arg>
+                        <arg>-Xlint:-serial</arg>
+                        <arg>-Xlint:-classfile</arg>
+                        <arg>-proc:none</arg>
+                        <arg>--add-exports</arg>
+                        <arg>java.base/sun.nio.ch=ALL-UNNAMED</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>${maven-jar.version}</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Implementation-Title>Axiom Reactive Warp Driver</Implementation-Title>
+                            <Implementation-Version>${project.version}</Implementation-Version>
+                            <Build-Jdk-Spec>${java.version}</Build-Jdk-Spec>
+                            <Axiom-Compliance-Level>Non-Blocking-Backpressure-Flow</Axiom-Compliance-Level>
+                            <Automatic-Module-Name>com.ensemblu.axiom.warp.reactive</Automatic-Module-Name>
+                            <Created-By>Axiom-Architect</Created-By>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>${maven-source.version}</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <version>${maven-install.version}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>${maven-clean.version}</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>
