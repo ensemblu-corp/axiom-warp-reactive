@@ -9,7 +9,7 @@ Where `axiom-jdbc` is the precision hammer for request/response work, `axiom-war
 ## Requirements
 
 - **Java 26** (compiled with `--enable-preview`)
-- **Vert.x 5.1.5** — `vertx-core`, `vertx-sql-client`
+- **Vert.x 5.1.6** — `vertx-core`, `vertx-sql-client`
 - A reactive SQL driver compatible with `vertx-sql-client` (the built-in `Dialect` enum ships `POSTGRES` and `GENERIC`)
 - Axiom core + Axiom spec on the classpath
 
