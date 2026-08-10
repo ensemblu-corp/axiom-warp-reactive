@@ -27,13 +27,13 @@ Summon the Specification engine into your project:
 <dependency>    
      <groupId>com.ensemblu</groupId>   
      <artifactId>axiom-warp-reactive</artifactId>   
-     <version>1.0.0</version>  
+     <version>2.0.0</version>  
 </dependency>   
 ```   
 **Gradle**
 
 ```groovy
- implementation("com.ensemblu:axiom-warp-reactive:1.0.0")   
+ implementation("com.ensemblu:axiom-warp-reactive:2.0.0")   
 ```
 
 ---
