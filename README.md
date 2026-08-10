@@ -1,239 +1,198 @@
-# 🌊 Axiom Warp (Reactive)
 
-Non-blocking database engine for the **Axiom** framework, built on **Vert.x 5** and `vertx-sql-client`. It is the event-loop counterpart to `axiom-jdbc`: same contract-driven, zero-reflection philosophy, same `PersistentMap`/`PersistentList` result shapes, same "strike" vocabulary — but every operation returns a `Future<Result<T>>` instead of blocking a thread.
+# 🌊 Axiom Warp Reactive
 
-Where `axiom-jdbc` is the precision hammer for request/response work, `axiom-warp-reactive` is built for pipelines: composed async chains, streaming ingestion with real backpressure, and forensic diagnostics on failure via the **AHE Protocol**.
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Java](https://img.shields.io/badge/Java-26-orange)
+![Vert.x](https://img.shields.io/badge/Vert.x-5.1.6-purple)
+![Depends](https://img.shields.io/badge/depends%20on-axiom--spec-informational)
+![License](https://img.shields.io/badge/license-Limited%20Commercial-red)
+
+**Non-blocking database engine for Axiom — built on Vert.x 5 and `vertx-sql-client`.**
+
+The event-loop counterpart to `axiom-warp-jdbc`: same contract-driven, zero-reflection philosophy, same `PersistentMap` / `PersistentList` result shapes, same “strike” vocabulary — but every operation returns a `Future<Result<T>>`.
+
+Where JDBC is the precision hammer for request/response work, **Warp Reactive** is built for pipelines: composed async chains, streaming ingestion with real backpressure, and forensic diagnostics via the **AHE Protocol**.
 
 ---
 
 ## Requirements
 
-- **Java 26** (compiled with `--enable-preview`)
-- **Vert.x 5.1.6** — `vertx-core`, `vertx-sql-client`
-- A reactive SQL driver compatible with `vertx-sql-client` (the built-in `Dialect` enum ships `POSTGRES` and `GENERIC`)
-- Axiom core + Axiom spec on the classpath
+- **Java 26**
+- **Vert.x 5.1.6** (`vertx-core`, `vertx-sql-client`) — managed by this module
+- A reactive SQL driver compatible with `vertx-sql-client` (`Dialect` ships `POSTGRES` and `GENERIC`)
+- [`axiom-spec`](https://github.com/ensemblu-corp/axiom-spec) `2.0.0` (and therefore `axiom`)
 
-The build deliberately excludes Netty's HTTP/2, HTTP/3, and QUIC codecs (not needed for a SQL client), and excludes Jackson entirely — see [The Ghost Codec](#the-ghost-codec) below.
+Jackson is **excluded**. Netty HTTP/2, HTTP/3, and QUIC codecs are excluded — they are not needed for a SQL client.
 
 ---
 
-## 🏛️ Integration
-
-Summon the Specification engine into your project:
+## Installation
 
 **Maven**
 
-```xml 
-<dependency>    
-     <groupId>com.ensemblu</groupId>   
-     <artifactId>axiom-warp-reactive</artifactId>   
-     <version>2.0.0</version>  
-</dependency>   
-```   
+```xml
+<dependency>
+    <groupId>com.ensemblu</groupId>
+    <artifactId>axiom-warp-reactive</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
 **Gradle**
 
 ```groovy
- implementation("com.ensemblu:axiom-warp-reactive:2.0.0")   
+implementation("com.ensemblu:axiom-warp-reactive:2.0.0")
 ```
 
 ---
 
-## Package Structure
-
-```
-dev.axiom.reactive
-├── api
-│   ├── AxiomWarp.java            // Facade + builder + Strike/Ingest/Sync fingers
-│   ├── AxiomWarpBehavior.java    // Full reactive contract (WarpStrike + history + shutdown)
-│   ├── WarpStrike.java           // read / write / parallelRead / parallelWrite
-│   └── ArmableStrike.java        // A strike definition awaiting a SqlClient
-├── buffer
-│   └── TemporalStreamBuffer.java // Rolling-window "black box recorder"
-├── codec
-│   ├── AxiomGhostCodec.java      // No-op JSON codec — neutralizes Vert.x's default
-│   └── AxiomGhostFactory.java    // SPI factory for the Ghost Codec
-├── engine
-│   ├── Forge.java                // Builds strike/batch/sync definitions
-│   ├── ReactiveBinder.java       // Binds typed values onto a Vert.x Tuple
-│   ├── ReactiveExecutionEngine.java  // Executes a plan against a SqlClient
-│   ├── ReactiveResultConverter.java  // RowSet -> PersistentList<PersistentMap>
-│   ├── ReactiveResultRow.java    // Single-row navigator/materializer
-│   ├── SovereignFlow.java        // AHE Protocol: attaches forensic context on failure
-│   ├── core
-│   │   ├── ExecutionEngine.java
-│   │   └── SovereignGate.java    // Plan + contract verification before execution
-│   └── dialect
-│       └── Dialect.java          // POSTGRES / GENERIC placeholder translation
-├── ingest
-│   ├── Pipeline.java             // Streaming CSV ingestion contract
-│   └── DefaultPipeline.java      // Vert.x AsyncFile + RecordParser implementation
-├── provision
-│   └── RawProvisioner.java       // Vert.x Pool bootstrap + run/runAtomic gateways
-├── scope
-│   ├── Async.java                // Perimeter guard: connection use + transactions
-│   ├── ParallelGateway.java      // Contract for parallel strike coordination
-│   └── WarpScope.java            // Fork/join of parallel strikes via CompositeFuture
-└── syntax
-    └── BareVertx.java            // Direct-access gateway, bypasses defensive Vert.x API
-```
-
----
-
-## Getting Started
-
-### 1. Build the engine
+## Quick start
 
 ```java
+import com.ensemblu.axiom.api.Axiom;
+import com.ensemblu.axiom.reactive.api.AxiomWarp;
+import com.ensemblu.axiom.reactive.engine.dialect.Dialect;
+import com.ensemblu.axiom.reactive.buffer.TemporalStreamBuffer;
+import com.ensemblu.axiom.reactive.provision.RawProvisioner;
+import com.ensemblu.axiom.spec.database.materializer.AxiomProtocol;
+import io.vertx.core.Future;
+
+// 1. Build the engine
 AxiomWarp warp = AxiomWarp.protocol()
         .withFactory(RawProvisioner.basedOnConfig(configSource)
                 .withPoolProvider(config -> MyPool.from(config))
                 .validateRules()
                 .getOrThrow())
         .withCache(TemporalStreamBuffer.ofWindowDuration(Duration.ofMinutes(5)))
-        // or .withoutCache() to disable AHE forensic history
+        // or .withoutCache()
         .withDialect(Dialect.POSTGRES);
-```
 
-### 2. Read
-
-```java
+// 2. Read (shot)
 Future<Result<PersistentList<PersistentMap<String, Object>>>> rows =
         warp.strike().shot("SELECT * FROM users").arm(client);
-```
 
-`AxiomWarp.read` / `.write` also expose the raw perimeter directly if you need manual `SqlClient` control:
-
-```java
+// Or via the perimeter:
 warp.read(client -> warp.strike().shot("SELECT * FROM users").arm(client));
-```
 
-### 3. Write (typed, transactional)
-
-```java
+// 3. Write (typed, transactional)
 warp.write(client ->
         warp.strike()
-              .dynamic("INSERT INTO users (id, name) VALUES (:java.id, :java.name)")
-              .withContract(Axiom
-                          .Data
-                          .<String,AxiomProtocol>emptyMap()
-                            .put("id",AxiomProtocol.LONG)
-                            .put("name",AxiomProtocol.STRING))
-              .withData(Axiom
-                      .Data
-                      .<String,Object>emptyMap()
-                            .put("id",1L)
-                            .put("name","Ofek"))
-              .arm(client)
-);
-```
+                .dynamic("INSERT INTO users (id, name) VALUES (:java.id, :java.name)")
+                .withContract(Axiom.Data.<String, AxiomProtocol>emptyMap()
+                        .put("id", AxiomProtocol.LONG)
+                        .put("name", AxiomProtocol.STRING))
+                .withData(Axiom.Data.<String, Object>emptyMap()
+                        .put("id", 1L)
+                        .put("name", "Ofek"))
+                .arm(client));
 
-`AxiomWarp.write` runs the logic through `RawProvisioner.runAtomic` → `Async.transaction`, which begins a Vert.x transaction, commits on `Result.success`, and rolls back on `Result.failure` or exception.
-
-### 4. Bulk / batch strikes
-
-```java
-warp.write(client ->
-        warp.strike()
-            .bulk("INSERT INTO users (id, name) VALUES (:java.id, :java.name)")
-            .withContract(types)
-            .withData(listOfRows)
-            .arm(client)
-);
-```
-
-### 5. Stream-ingest a CSV file
-
-```java
+// 4. Stream-ingest a CSV file (real backpressure)
 warp.ingest()
-    .stream("users.csv")
-    .usingFileHeaders()
-    .onTableName("users")
-    .arm(client);   // Future<Result<Long>>
-```
-
-`DefaultPipeline` opens the file with Vert.x's async filesystem, parses it line-by-line with `RecordParser`, and applies real backpressure: the parser is `pause()`d while a 1,000-row batch is flushed, and `resume()`d only after the batch insert succeeds. `map()` and `filter()` build a functional transform chain applied to every row before batching.
-
-### 6. Sync a delta to the database
-
-```java
-warp.sync()
-    .tableName("users")
-    .whereDelete("id = :java.id")
-    .whereUpdate("id = :java.id")
-    .withDelta(mapDelta)
-    .arm(client);   // Future<Result<Nothing>>
-```
-
-Same update → delete → insert ordering as the blocking `SyncStrike`, composed here with `Future.flatMap` instead of sequential blocking calls.
-
-### 7. Run strikes in parallel
-
-```java
-warp.parallelRead(instructions);   // no transaction
-warp.parallelWrite(instructions);  // atomic transaction wrapping all strikes
-```
-
-`WarpScope.forkAndJoin` builds one `ArmableStrike` per instruction, fans them out over a single connection via `CompositeFuture`, and flattens successful results into one `PersistentList` — or fails the whole batch if any strike fails.
-
-### 8. Query with forensic history on failure (the AHE Protocol)
-
-```java
-WarpStrike withHistory = warp.withHistory(Duration.ofSeconds(30));
-
-withHistory.read(client -> warp.strike().shot("SELECT * FROM ledger").arm(client));
-```
-
-If the strike fails, `SovereignFlow.attachContextOnBreach` pulls the last 30 seconds of successful operations out of the `TemporalStreamBuffer` and appends that snapshot to the failure message — a black-box recorder for the moments leading up to a breach. Requesting a lookback window larger than the buffer's configured window throws immediately (`AXIOM BREACH: Lookback exceeds Buffer Window`).
-
-### 9. Shutdown
-
-```java
-warp.shutdown();
+        .stream("users.csv")
+        .usingFileHeaders()
+        .onTableName("users")
+        .arm(client);   // Future<Result<Long>>
 ```
 
 ---
 
-## Core Concepts
+## Package structure
 
-### The Sovereign Gate
-
-Every strike passes through `SovereignGate.execute`, mirroring the blocking engine: forge the SQL into an `ExecutionPlan`, verify the type contract aligns with the plan and data (`IngressIntegrity.verifyAlignment`), *then* bind and execute. Nothing reaches the Vert.x driver unverified.
-
-### Dialect Translation
-
-`Dialect` is a two-value enum (`POSTGRES`, `GENERIC`) that rewrites Axiom's `?` placeholders into the target driver's native marker (`$1`, `$2`, …) at forge time. The engine is otherwise driver-agnostic — swapping dialects doesn't touch calling code.
-
-### Arming: Deferred Execution
-
-Every strike built through `Forge` (`TypedStrike`, `AddBatchRequest`, `AddSyncTable`, …) is a pure definition — a `Function` that hasn't touched a connection yet. Nothing executes until you call `.arm(client)`. This is what lets `AxiomWarp.write` decide *when* and *under what transaction* a strike actually runs, rather than the strike deciding for itself.
-
-### The AHE Protocol (Axiom-Hostile-Environment)
-
-Vert.x's `io.vertx` namespace is treated as an **untrusted zone**: fast, but built on mutable collections and imperative callbacks that don't match Axiom's immutable, functional design. The AHE Protocol is the containment boundary:
-
-- **Drain Protocol** — data is folded out of Vert.x containers into `PersistentList`/`PersistentMap`/`Result` the moment a `Future` resolves; business logic never sees a raw `RowSet` or `List`.
-- **Zero-Allocation Bridge** — bridging code avoids `ArrayList` churn; `BareVertx` calls straight into Vert.x's internal `SucceededFuture` / `CompositeFutureImpl` rather than the defensive public API.
-- **Perimeter Containment** — `Async` and `SovereignGate` are the only code allowed to touch a raw `SqlConnection`/`Transaction`; everything else operates on `SqlClient` through those gates.
-- **Immutable Sovereignty** — anything Vert.x hands back is treated as unsafe until converted; anything passed *into* Vert.x is a frozen snapshot.
-
-See `AHE_Protocol.md` in the repo root for the full mandate list.
-
-### The Ghost Codec
-
-`AxiomGhostCodec` / `AxiomGhostFactory` are registered via `META-INF/services/io.vertx.core.spi.JsonFactory` and effectively neutralize Vert.x's default JSON layer — `fromString`/`fromBuffer`/`fromValue` all return `null`; `toString`/`toBuffer` pass values through unchanged. Since `pom.xml` explicitly excludes Jackson from the dependency tree, this is a deliberate statement: Axiom does not parse or produce JSON through a third-party codec, full stop.
+```
+com.ensemblu.axiom.reactive
+├── api
+│   ├── AxiomWarp.java              // Facade + builder
+│   ├── AxiomWarpBehavior.java
+│   ├── WarpStrike.java             // read / write / parallel*
+│   └── ArmableStrike.java
+├── buffer
+│   └── TemporalStreamBuffer.java   // Rolling-window “black box” recorder
+├── codec
+│   ├── AxiomGhostCodec.java        // Neutralises Vert.x default JSON
+│   └── AxiomGhostFactory.java      // SPI registration
+├── engine
+│   ├── Forge.java
+│   ├── ReactiveBinder.java
+│   ├── ReactiveExecutionEngine.java
+│   ├── ReactiveResultConverter.java
+│   ├── ReactiveResultRow.java
+│   ├── SovereignFlow.java
+│   ├── core/
+│   │   ├── ExecutionEngine.java
+│   │   └── SovereignGate.java
+│   └── dialect/Dialect.java
+├── ingest
+│   ├── Pipeline.java
+│   └── DefaultPipeline.java        // Byte-oriented CSV (2.0.0)
+├── provision
+│   └── RawProvisioner.java
+├── scope
+│   ├── Async.java
+│   ├── ParallelGateway.java
+│   └── WarpScope.java
+└── syntax
+    └── BareVertx.java              // Direct Vert.x internal bridges
+```
 
 ---
 
-## Design Notes
+## AHE Protocol (summary)
 
-- **No streaming result sets.** `ReactiveResultConverter` fully materializes a `RowSet<Row>` into a `PersistentList` — backpressure is real for the CSV *ingestion* pipeline (via `RecordParser.pause()/resume()`), but query results are not currently streamed row-by-row.
-- **Parallel execution shares one connection.** Unlike the blocking `WarpScope` (one JDBC connection per forked task), the reactive `WarpScope.forkAndJoin` fans multiple strikes out over a *single* `SqlClient` — appropriate for Vert.x's event-loop model, where the connection itself is non-blocking.
-- **No retry/backoff/circuit-breaker primitives exist yet.** Failures propagate as `Result.failure`, optionally enriched with AHE forensic history — there is currently no declarative retry or dead-letter mechanism in this jar.
-- **No LISTEN/NOTIFY or CDC integration exists yet.** All operations are still pull-based (`read`/`write`/`parallelRead`/`parallelWrite`); push-based reactivity is not implemented in this module as shown.
+The **Axiom Hardware Envelope** is the containment boundary between Vert.x and Axiom:
+
+| Rule | Meaning |
+|------|---------|
+| **Drain Protocol** | Data is folded out of Vert.x containers into `PersistentList` / `PersistentMap` / `Result` the moment a `Future` resolves. Business logic never sees a raw `RowSet`. |
+| **Zero-Allocation Bridge** | Bridging code avoids `ArrayList` churn; `BareVertx` calls into Vert.x internals where safe. |
+| **Perimeter Containment** | Only `Async` and `SovereignGate` may touch a raw `SqlConnection` / `Transaction`. |
+| **Immutable Sovereignty** | Anything Vert.x hands back is unsafe until converted; anything passed *into* Vert.x is a frozen snapshot. |
+
+Full mandate list: see `AHE_Protocol.md` in the repository.
 
 ---
 
+## The Ghost Codec
 
-## 📜 Legal
+`AxiomGhostCodec` / `AxiomGhostFactory` are registered via  
+`META-INF/services/io.vertx.core.spi.JsonFactory`.
 
-This project is governed by the principles of immutable software architecture. See `LICENSE.md` for the specific terms of use.
+They neutralise Vert.x’s default JSON layer (`fromString` / `fromBuffer` return `null`; `toString` / `toBuffer` pass values through). Combined with the explicit exclusion of Jackson, this is a deliberate statement:
+
+> Axiom does not parse or produce JSON through a third-party codec.
+
+JSON work belongs to `JsonParser` / `JsonEmitter` in `axiom-spec`.
+
+---
+
+## 2.0.0 notes
+
+- **Vert.x** bumped from 5.1.5 → **5.1.6**; properties consolidated to a single `vertx.version`.
+- **DefaultPipeline** now feeds `CsvRowParser` with `byte[]` (`line.getBytes()`), matching the rest of the stack’s zero-copy parsing contract.
+- Query results are still fully materialised (not streamed row-by-row). Backpressure is real for the **CSV ingestion** pipeline via `RecordParser.pause()` / `resume()`.
+
+---
+
+## Design notes
+
+- **Parallel execution** shares one `SqlClient` (appropriate for the event-loop model), unlike JDBC’s one-connection-per-task approach.
+- **No retry / backoff / circuit-breaker** primitives yet — failures surface as `Result.failure`, optionally enriched with AHE forensic history.
+- **No LISTEN/NOTIFY or CDC** yet — all operations remain pull-based (`read` / `write` / `parallel*`).
+
+---
+
+## Related modules
+
+| Module | Relationship |
+|--------|----------------|
+| `axiom-spec` | Parsers, materializers, protocols |
+| `axiom` | Core data structures & `Result` |
+| `axiom-warp-jdbc` | Blocking counterpart |
+
+---
+
+## Legal
+
+Limited Commercial License — free for evaluation, testing, and non-commercial development.  
+Commercial or production use requires a paid annual contract from Ensemblu Corp.
+
+See `LICENSE.md`. Contact: **contact@ensemblu.com**
